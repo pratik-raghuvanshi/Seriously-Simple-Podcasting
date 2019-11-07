@@ -101,8 +101,7 @@ class Rss_Importer {
 
 		$this->load_rss_feed();
 
-		$this->podcast_count = count( $this->feed_object->channel->item );
-
+		$this->podcast_count = $this->feed_podcast_count(); //count( $this->feed_object->channel->item );
 		for ( $i = 0; $i < $this->podcast_count; $i ++ ) {
 
 			$item = $this->feed_object->channel->item[ $i ];
@@ -144,8 +143,9 @@ class Rss_Importer {
 			if ( ! empty( $this->series ) ) {
 				wp_set_post_terms( $post_id, $this->series, 'series' );
 			}
-
-			// Update the added count and imported title array
+                        
+                        $this->update_post_guid( $post_id );
+                        // Update the added count and imported title array
 			$this->podcast_added ++;
 			$this->podcasts_imported[] = $post_title;
 
@@ -165,4 +165,52 @@ class Rss_Importer {
 		return $response;
 
 	}
+        /**
+         * Get the count of new episodes in the selected series.
+         * 
+         * @return int
+         */
+        public function feed_podcast_count() {
+            $podcast_count = count( $this->feed_object->channel->item ); // Get  the count of podcast from feed
+            if ( ! empty( $this->series ) ) {
+                $previous_episodes = count(
+                                        get_posts(
+                                            [
+                                                'post_type' => $this->post_type,
+                                                'post_status' => 'publish',
+                                                'fields'      => 'ids',
+                                                'numberposts' => -1,
+                                                'tax_query' => [
+                                                    [
+                                                        'taxonomy' => 'series',
+                                                        'field' => 'id',
+                                                        'terms' => $this->series,
+                                                        'include_children' => false
+                                                    ]
+                                                ]
+                                            ]
+                                        )
+                                    ); // Get the episodes count from DB.
+                if( !empty($previous_episodes) ){
+                    if($previous_episodes < $podcast_count){
+                        $podcast_count = $podcast_count - $previous_episodes;
+                    } elseif($previous_episodes >= $podcast_count) {
+                        $podcast_count = 0;
+                    }   
+                }                    
+            }
+            return $podcast_count;
+        }
+        /**
+         * Function to update the GUID of each podcast.
+         * @global type $wpdb
+         * @param int $post_id
+         */
+        public function update_post_guid($post_id = false) {
+            global $wpdb;
+            if( $post_id ){
+                $guid = site_url().'/?post_type=podcast&p='.$post_id;
+                $update = $wpdb->update( $wpdb->posts, array( 'guid' => $guid ), array( 'ID' => $post_id ) );
+            }
+        }
 }
